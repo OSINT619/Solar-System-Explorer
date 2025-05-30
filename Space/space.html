@@ -1,0 +1,1868 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Enhanced Solar System Explorer</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.11.4/gsap.min.js"></script>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #000;
+        }
+        canvas {
+            display: block;
+        }
+        .overlay {
+            background-color: rgba(0, 0, 0, 0.7);
+            backdrop-filter: blur(5px);
+            border-radius: 12px;
+            border: 1px solid rgba(59, 130, 246, 0.3);
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+            transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+        .overlay:hover {
+            background-color: rgba(0, 0, 0, 0.85);
+            border-color: rgba(59, 130, 246, 0.5);
+        }
+        .btn {
+            transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0, 100, 255, 0.5);
+        }
+        .btn:active {
+            transform: translateY(0);
+        }
+        .planet-btn {
+            transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+            border: 2px solid transparent;
+        }
+        .planet-btn:hover {
+            border-color: #60a5fa;
+            background-color: rgba(0, 0, 0, 0.7);
+        }
+        .planet-btn.active {
+            border-color: #3b82f6;
+            background-color: rgba(0, 0, 0, 0.8);
+        }
+        #infoPanel {
+            transition: all 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+            max-height: 0;
+            overflow: hidden;
+        }
+        #infoPanel.open {
+            max-height: 500px;
+        }
+        .tutorial-highlight {
+            animation: pulse 2s infinite;
+        }
+        @keyframes pulse {
+            0% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.7); }
+            70% { box-shadow: 0 0 0 10px rgba(59, 130, 246, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0); }
+        }
+        .planet-list {
+            max-height: 70vh;
+            overflow-y: auto;
+            scrollbar-width: thin;
+            scrollbar-color: rgba(59, 130, 246, 0.5) rgba(0, 0, 0, 0.3);
+        }
+        .planet-list::-webkit-scrollbar {
+            width: 6px;
+        }
+        .planet-list::-webkit-scrollbar-track {
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 10px;
+        }
+        .planet-list::-webkit-scrollbar-thumb {
+            background: rgba(59, 130, 246, 0.5);
+            border-radius: 10px;
+        }
+        .planet-list::-webkit-scrollbar-thumb:hover {
+            background: rgba(59, 130, 246, 0.8);
+        }
+        .star {
+            position: absolute;
+            background-color: white;
+            border-radius: 50%;
+            animation: twinkle 4s infinite;
+        }
+        @keyframes twinkle {
+            0%, 100% { opacity: 0.2; }
+            50% { opacity: 1; }
+        }
+        .tab {
+            transition: all 0.3s ease;
+            border-bottom: 2px solid transparent;
+        }
+        .tab.active {
+            border-bottom-color: #3b82f6;
+            color: #3b82f6;
+        }
+        .tab:hover:not(.active) {
+            border-bottom-color: rgba(59, 130, 246, 0.5);
+        }
+        .tooltip {
+            position: absolute;
+            background-color: rgba(0, 0, 0, 0.8);
+            color: white;
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-size: 14px;
+            z-index: 100;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+            border: 1px solid rgba(59, 130, 246, 0.5);
+            max-width: 200px;
+        }
+        .planet-card {
+            transition: all 0.3s ease;
+            transform: translateY(0);
+        }
+        .planet-card:hover {
+            transform: translateY(-5px);
+        }
+        #solarIntro { transition: opacity 50s; transition:all 10.5s ease; opacity: 1; }
+#introText { transition:ease-in-out opacity 15; opacity: 1 opacity 10; }
+#introBlack { transition:all; opacity: 5; }
+
+#canvas-container {
+    width: 100vw;
+    height: 100vh;
+    position: fixed;
+    top: 0;
+    left: 0;
+    z-index: 0;
+}
+    </style>
+</head>
+<body class="bg-black text-white">
+    <div id="canvas-container" style="width:100vw; height:100vh; position:fixed; top:0; left:0; z-index:0;"></div>
+    <!-- Controls Panel -->
+    <div class="fixed top-4 left-4 overlay controls-panel p-2 z-20 max-w-xs">
+        <h2 class="text-lg font-bold mb-2 text-blue-400">Navigation</h2>
+        <div class="grid grid-cols-2 gap-1 text-xs mb-2">
+            <div>🖱️ Drag:</div><div>Rotate</div>
+            <div>🖱️ Right Drag:</div><div>Pan</div>
+            <div>🖱️ Scroll:</div><div>Zoom</div>
+            <div>🚀 Space:</div><div>Reset</div>
+        </div>
+        <!-- Gooey Dropdown Menu -->
+        <div class="relative mt-2">
+            <button id="menuToggleBtn" class="btn bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-lg flex items-center w-full justify-between">
+                <span>Solar System Menu</span>
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 ml-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+                </svg>
+            </button>
+            <div id="gooeyMenu" class="absolute left-0 mt-2 w-full bg-black bg-opacity-90 rounded-lg shadow-lg border border-blue-500 flex flex-col space-y-2 p-3 z-30" style="display:none;">
+                <button id="educationBtn" class="btn bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-lg flex items-center">
+                    <span>Space Encyclopedia</span>
+                </button>
+                <button id="toggleOrbitsBtn" class="btn bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-lg flex items-center">
+                    <span>Show Orbits</span>
+                </button>
+                <button id="toggleLabelsBtn" class="btn bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-lg flex items-center">
+                    <span>Show Labels</span>
+                </button>
+                <button id="toggleScaleBtn" class="btn bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-lg flex items-center">
+                    <span>Toggle Scale</span>
+                </button>
+                <button id="viewModeBtn" class="btn bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-lg flex items-center">
+                    <span>Cinematic Mode</span>
+                </button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Info Panel -->
+    <div class="fixed bottom-4 left-1/2 transform -translate-x-1/2 w-11/12 md:w-3/4 lg:w-2/3 overlay p-4 z-10">
+        <div class="flex justify-between items-center">
+            <h2 id="infoTitle" class="text-xl font-bold text-blue-400">Earth</h2>
+            <button id="toggleInfoBtn" class="text-blue-400 hover:text-blue-300">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+                </svg>
+            </button>
+        </div>
+        <div id="infoPanel" class="mt-2 text-sm">
+            <div id="sunInfo" class="hidden">
+                <p class="mb-2">The Sun is the star at the center of our Solar System, a nearly perfect sphere of hot plasma.</p>
+                <ul class="list-disc pl-5 mb-2">
+                    <li>Diameter: 1,392,700 km (109× Earth's diameter)</li>
+                    <li>Mass: 1.989 × 10^30 kg (333,000× Earth's mass)</li>
+                    <li>Surface Temperature: 5,500°C (9,940°F)</li>
+                    <li>Core Temperature: 15 million°C (27 million°F)</li>
+                    <li>Age: About 4.6 billion years</li>
+                    <li>Classification: G-type main-sequence star (G2V)</li>
+                </ul>
+                <p>The Sun accounts for 99.86% of the mass in the Solar System. It fuses about 600 million tons of hydrogen into helium every second, converting 4 million tons of matter into energy as a result.</p>
+            </div>
+            <div id="mercuryInfo" class="hidden">
+                <p class="mb-2">Mercury is the smallest and innermost planet in the Solar System, orbiting closest to the Sun.</p>
+                <ul class="list-disc pl-5 mb-2">
+                    <li>Diameter: 4,880 km (0.38× Earth's diameter)</li>
+                    <li>Mass: 3.3 × 10^23 kg (0.055× Earth's mass)</li>
+                    <li>Orbital Period: 88 Earth days</li>
+                    <li>Rotation Period: 58.6 Earth days</li>
+                    <li>Average Distance from Sun: 57.9 million km (0.39 AU)</li>
+                    <li>Surface Temperature: -173°C to 427°C (-280°F to 800°F)</li>
+                </ul>
+                <p>Mercury has almost no atmosphere, causing it to have extreme temperature variations. Its surface is heavily cratered, similar to our Moon, due to impacts over billions of years.</p>
+            </div>
+            <div id="venusInfo" class="hidden">
+                <p class="mb-2">Venus is the second planet from the Sun and Earth's closest planetary neighbor, often called Earth's "sister planet".</p>
+                <ul class="list-disc pl-5 mb-2">
+                    <li>Diameter: 12,104 km (0.95× Earth's diameter)</li>
+                    <li>Mass: 4.87 × 10^24 kg (0.82× Earth's mass)</li>
+                    <li>Orbital Period: 225 Earth days</li>
+                    <li>Rotation Period: 243 Earth days (retrograde)</li>
+                    <li>Average Distance from Sun: 108.2 million km (0.72 AU)</li>
+                    <li>Surface Temperature: 462°C (864°F) - hottest planet</li>
+                </ul>
+                <p>Venus has a thick atmosphere composed mainly of carbon dioxide, creating a runaway greenhouse effect. It rotates in the opposite direction to most planets, and its day is longer than its year.</p>
+            </div>
+            <div id="earthInfo">
+                <p class="mb-2">Earth is our home planet, the third planet from the Sun in our Solar System.</p>
+                <ul class="list-disc pl-5 mb-2">
+                    <li>Diameter: 12,742 km</li>
+                    <li>Mass: 5.97 × 10^24 kg</li>
+                    <li>Orbital Period: 365.25 days</li>
+                    <li>Rotation Period: 24 hours</li>
+                    <li>Average Distance from Sun: 149.6 million km (1 AU)</li>
+                    <li>Surface Temperature: -88°C to 58°C (-126°F to 136°F)</li>
+                </ul>
+                <p>Earth is the only known planet to support life, with its protective atmosphere and vast oceans covering 71% of its surface. It has one natural satellite, the Moon, which stabilizes Earth's axial tilt and moderates our climate.</p>
+            </div>
+            <div id="moonInfo" class="hidden">
+                <p class="mb-2">The Moon is Earth's only natural satellite and the fifth largest moon in the Solar System.</p>
+                <ul class="list-disc pl-5 mb-2">
+                    <li>Diameter: 3,474 km (0.27× Earth's diameter)</li>
+                    <li>Mass: 7.35 × 10^22 kg (0.012× Earth's mass)</li>
+                    <li>Orbital Period around Earth: 27.3 days</li>
+                    <li>Rotation Period: 27.3 days (tidally locked)</li>
+                    <li>Average Distance from Earth: 384,400 km</li>
+                    <li>Surface Temperature: -173°C to 127°C (-280°F to 260°F)</li>
+                </ul>
+                <p>The Moon's gravitational influence produces Earth's tides and gradually slows Earth's rotation. It has no atmosphere and is covered in regolith - a mixture of fine dust and rocky debris formed by meteor impacts.</p>
+            </div>
+            <div id="marsInfo" class="hidden">
+                <p class="mb-2">Mars is the fourth planet from the Sun, often called the "Red Planet" due to its reddish appearance.</p>
+                <ul class="list-disc pl-5 mb-2">
+                    <li>Diameter: 6,779 km (0.53× Earth's diameter)</li>
+                    <li>Mass: 6.42 × 10^23 kg (0.11× Earth's mass)</li>
+                    <li>Orbital Period: 687 Earth days</li>
+                    <li>Rotation Period: 24.6 hours</li>
+                    <li>Average Distance from Sun: 227.9 million km (1.5 AU)</li>
+                    <li>Surface Temperature: -153°C to 20°C (-243°F to 68°F)</li>
+                    <li>Moons: 2 (Phobos and Deimos)</li>
+                </ul>
+                <p>Mars has the largest volcano in the Solar System (Olympus Mons) and a canyon system (Valles Marineris) that would stretch across the United States. Evidence suggests Mars once had liquid water on its surface and could potentially support microbial life.</p>
+            </div>
+            <div id="jupiterInfo" class="hidden">
+                <p class="mb-2">Jupiter is the fifth planet from the Sun and the largest in our Solar System.</p>
+                <ul class="list-disc pl-5 mb-2">
+                    <li>Diameter: 139,820 km (11× Earth's diameter)</li>
+                    <li>Mass: 1.898 × 10^27 kg (318× Earth's mass)</li>
+                    <li>Orbital Period: 11.86 Earth years</li>
+                    <li>Rotation Period: 9.93 hours</li>
+                    <li>Average Distance from Sun: 778.5 million km (5.2 AU)</li>
+                    <li>Temperature (cloud tops): -145°C (-234°F)</li>
+                    <li>Number of Known Moons: 79+</li>
+                </ul>
+                <p>Jupiter is a gas giant composed mainly of hydrogen and helium. Its most distinctive feature is the Great Red Spot, a giant storm that has existed for at least 150 years. Jupiter's strong magnetic field is 14 times stronger than Earth's.</p>
+            </div>
+            <div id="saturnInfo" class="hidden">
+                <p class="mb-2">Saturn is the sixth planet from the Sun and is famous for its spectacular ring system.</p>
+                <ul class="list-disc pl-5 mb-2">
+                    <li>Diameter: 116,460 km (9.5× Earth's diameter)</li>
+                    <li>Mass: 5.68 × 10^26 kg (95× Earth's mass)</li>
+                    <li>Orbital Period: 29.45 Earth years</li>
+                    <li>Rotation Period: 10.7 hours</li>
+                    <li>Average Distance from Sun: 1.4 billion km (9.5 AU)</li>
+                    <li>Temperature (cloud tops): -178°C (-288°F)</li>
+                    <li>Number of Known Moons: 82+</li>
+                    <li>Ring System Diameter: 270,000 km</li>
+                </ul>
+                <p>Saturn's rings are made mostly of ice particles with a smaller amount of rocky debris and dust. Despite their impressive size, the rings are incredibly thin - typically only about 10 meters thick. Saturn is the least dense planet in our solar system and would float in water if there were an ocean large enough.</p>
+            </div>
+            <div id="uranusInfo" class="hidden">
+                <p class="mb-2">Uranus is the seventh planet from the Sun and the first planet discovered with a telescope.</p>
+                <ul class="list-disc pl-5 mb-2">
+                    <li>Diameter: 50,724 km (4× Earth's diameter)</li>
+                    <li>Mass: 8.68 × 10^25 kg (14.5× Earth's mass)</li>
+                    <li>Orbital Period: 84 Earth years</li>
+                    <li>Rotation Period: 17.2 hours (retrograde)</li>
+                    <li>Average Distance from Sun: 2.9 billion km (19.8 AU)</li>
+                    <li>Temperature (cloud tops): -224°C (-371°F)</li>
+                    <li>Number of Known Moons: 27</li>
+                </ul>
+                <p>Uranus is unique among planets as it rotates on its side, with an axial tilt of about 98 degrees. It appears as a blue-green color due to methane in its atmosphere, which absorbs red light. Uranus has a system of rings, though they are much fainter than Saturn's.</p>
+            </div>
+            <div id="neptuneInfo" class="hidden">
+                <p class="mb-2">Neptune is the eighth and most distant planet from the Sun in our Solar System.</p>
+                <ul class="list-disc pl-5 mb-2">
+                    <li>Diameter: 49,244 km (3.9× Earth's diameter)</li>
+                    <li>Mass: 1.02 × 10^26 kg (17× Earth's mass)</li>
+                    <li>Orbital Period: 165 Earth years</li>
+                    <li>Rotation Period: 16.1 hours</li>
+                    <li>Average Distance from Sun: 4.5 billion km (30.1 AU)</li>
+                    <li>Temperature (cloud tops): -214°C (-353°F)</li>
+                    <li>Number of Known Moons: 14</li>
+                </ul>
+                <p>Neptune was the first planet located through mathematical predictions rather than direct observation. It has the strongest winds in the Solar System, reaching speeds of 2,100 km/h (1,300 mph). Its deep blue color comes from methane in its atmosphere.</p>
+            </div>
+            <div id="plutoInfo" class="hidden">
+                <p class="mb-2">Pluto is a dwarf planet in the Kuiper belt, a ring of bodies beyond Neptune.</p>
+                <ul class="list-disc pl-5 mb-2">
+                    <li>Diameter: 2,377 km (0.18× Earth's diameter)</li>
+                    <li>Mass: 1.3 × 10^22 kg (0.002× Earth's mass)</li>
+                    <li>Orbital Period: 248 Earth years</li>
+                    <li>Rotation Period: 6.4 Earth days (retrograde)</li>
+                    <li>Average Distance from Sun: 5.9 billion km (39.5 AU)</li>
+                    <li>Surface Temperature: -233°C (-387°F)</li>
+                    <li>Number of Known Moons: 5 (largest is Charon)</li>
+                </ul>
+                <p>Pluto was considered the ninth planet until 2006, when it was reclassified as a dwarf planet. NASA's New Horizons mission provided the first close-up images in 2015, revealing a heart-shaped region now called Tombaugh Regio and evidence of glacial flows of nitrogen ice.</p>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Educational Overlay -->
+    <div id="educationalOverlay" class="fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 overlay p-6 z-20 w-11/12 md:w-3/4 lg:w-1/2 hidden">
+        <div class="flex justify-between items-center mb-4">
+            <div class="flex space-x-4">
+                <button id="orbitalTab" class="tab active px-2 py-1 text-lg">Orbital Mechanics</button>
+                <button id="planetsTab" class="tab px-2 py-1 text-lg">Planet Types</button>
+                <button id="historyTab" class="tab px-2 py-1 text-lg">Space Exploration</button>
+            </div>
+            <button id="closeOverlayBtn" class="text-blue-400 hover:text-blue-300">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+            </button>
+        </div>
+        <!-- Orbital Mechanics Tab -->
+        <div id="orbitalContent" class="text-sm max-h-96 overflow-y-auto pr-2">
+            <h3 class="text-lg font-semibold text-blue-300 mb-2">🛰️ Orbital Mechanics (Updated 2025)</h3>
+            <p class="mb-3">
+                Orbital mechanics (or celestial mechanics) is the study of how celestial bodies move under the influence of gravity, primarily governed by Kepler’s Laws and Newton’s Laws of Motion. Advances in space missions and observations have improved our precision in understanding these orbits.
+            </p>
+            <h4 class="font-semibold text-blue-300 mb-1">🔭 Kepler’s Laws of Planetary Motion</h4>
+            <ul class="list-disc pl-5 mb-3">
+                <li><strong>Elliptical Orbits:</strong> All planets orbit the Sun in ellipses, with the Sun at one focus.</li>
+                <li><strong>Equal Areas in Equal Times:</strong> A line connecting a planet to the Sun sweeps out equal areas in equal intervals of time—faster when closer to the Sun (perihelion), slower when farther (aphelion).</li>
+                <li><strong>Harmonic Law:</strong> 𝑃²∝𝑎³ — The square of a planet’s orbital period is proportional to the cube of the semi-major axis (distance from the Sun).</li>
+            </ul>
+            <h4 class="font-semibold text-blue-300 mb-1">🌌 Mean Distance from the Sun (Updated AU & km values)</h4>
+            <div class="overflow-x-auto mb-3">
+                <table class="min-w-full text-xs text-left border border-blue-400 mb-2">
+                    <thead>
+                        <tr class="bg-blue-900 text-white">
+                            <th class="px-2 py-1 border border-blue-400">Planet</th>
+                            <th class="px-2 py-1 border border-blue-400">Distance (AU)</th>
+                            <th class="px-2 py-1 border border-blue-400">Distance (Million km)</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr><td class="border px-2">Mercury</td><td class="border px-2">0.387</td><td class="border px-2">57.9</td></tr>
+                        <tr><td class="border px-2">Venus</td><td class="border px-2">0.723</td><td class="border px-2">108.2</td></tr>
+                        <tr><td class="border px-2">Earth</td><td class="border px-2">1.000</td><td class="border px-2">149.6</td></tr>
+                        <tr><td class="border px-2">Mars</td><td class="border px-2">1.524</td><td class="border px-2">227.9</td></tr>
+                        <tr><td class="border px-2">Jupiter</td><td class="border px-2">5.203</td><td class="border px-2">778.3</td></tr>
+                        <tr><td class="border px-2">Saturn</td><td class="border px-2">9.537</td><td class="border px-2">1,430</td></tr>
+                        <tr><td class="border px-2">Uranus</td><td class="border px-2">19.191</td><td class="border px-2">2,870</td></tr>
+                        <tr><td class="border px-2">Neptune</td><td class="border px-2">30.07</td><td class="border px-2">4,500</td></tr>
+                        <tr><td class="border px-2">Pluto*</td><td class="border px-2">39.48</td><td class="border px-2">5,910</td></tr>
+                    </tbody>
+                </table>
+                <div class="text-xs text-gray-400 mb-2">*Pluto’s orbit is highly eccentric and inclined, ranging from ~29.7 AU to ~49.3 AU.</div>
+            </div>
+            <h4 class="font-semibold text-blue-300 mb-1">🚀 Orbital Velocity (Mean, Updated 2025)</h4>
+            <div class="overflow-x-auto mb-3">
+                <table class="min-w-full text-xs text-left border border-blue-400 mb-2">
+                    <thead>
+                        <tr class="bg-blue-900 text-white">
+                            <th class="px-2 py-1 border border-blue-400">Planet</th>
+                            <th class="px-2 py-1 border border-blue-400">Orbital Speed (km/s)</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr><td class="border px-2">Mercury</td><td class="border px-2">47.87</td></tr>
+                        <tr><td class="border px-2">Venus</td><td class="border px-2">35.02</td></tr>
+                        <tr><td class="border px-2">Earth</td><td class="border px-2">29.78</td></tr>
+                        <tr><td class="border px-2">Mars</td><td class="border px-2">24.07</td></tr>
+                        <tr><td class="border px-2">Jupiter</td><td class="border px-2">13.07</td></tr>
+                        <tr><td class="border px-2">Saturn</td><td class="border px-2">9.69</td></tr>
+                        <tr><td class="border px-2">Uranus</td><td class="border px-2">6.81</td></tr>
+                        <tr><td class="border px-2">Neptune</td><td class="border px-2">5.43</td></tr>
+                        <tr><td class="border px-2">Pluto*</td><td class="border px-2">4.74</td></tr>
+                    </tbody>
+                </table>
+            </div>
+            <h4 class="font-semibold text-blue-300 mb-1">🛰️ Recent Advancements in Orbital Science (2021–2025)</h4>
+            <ul class="list-disc pl-5 mb-3">
+                <li>Gaia Mission (ESA) refined positions and motions of over a billion stars and solar system bodies, leading to improved mass and orbit estimates for planets, moons, and even asteroids.</li>
+                <li>BepiColombo (ESA/JAXA) is refining Mercury’s orbit and testing aspects of general relativity due to its proximity to the Sun.</li>
+                <li>Artemis Missions (NASA) are using advanced orbital transfer techniques (NRHO – Near Rectilinear Halo Orbit) for the upcoming Lunar Gateway station.</li>
+                <li>Mars Sample Return & Perseverance are testing autonomous navigation and orbital coordination for precision sample retrieval.</li>
+            </ul>
+            <div class="mt-3 text-xs italic">📏 Simulation Note: While real-world distances and velocities are as above, many educational and interactive simulations use non-to-scale representations for easier comprehension and navigation.</div>
+        </div>
+        <!-- Planet Types Tab -->
+        <div id="planetsContent" class="text-sm max-h-96 overflow-y-auto pr-2 hidden">
+            <h3 class="text-lg font-semibold text-blue-300 mb-2">🌍 Terrestrial Planets: Mercury, Venus, Earth, Mars</h3>
+            <ul class="list-disc pl-5 mb-3">
+                <li><strong>Mercury:</strong> BepiColombo Mission: ESA and JAXA's joint mission, BepiColombo, has conducted multiple flybys of Mercury, capturing detailed images and data. The spacecraft is set to enter Mercury's orbit in 2025, aiming to study the planet's surface and magnetic field in unprecedented detail.</li>
+                <li><strong>Venus:</strong> Geological Activity: Recent studies have provided compelling evidence of tectonic activity on Venus, suggesting the planet is more geologically dynamic than previously thought.</li>
+                <li><strong>Earth:</strong> Planetary Defense: NASA's Double Asteroid Redirection Test (DART) mission successfully altered the trajectory of asteroid Dimorphos in 2022, demonstrating a viable method for planetary defense against potential asteroid threats.</li>
+                <li><strong>Mars:</strong> Aurora Observation: In a groundbreaking achievement, NASA's Perseverance rover captured the first visible-light aurora on Mars in 2024.</li>
+            </ul>
+            <h3 class="text-lg font-semibold text-blue-300 mb-2 mt-4">🌌 Gas Giants: Jupiter, Saturn</h3>
+            <ul class="list-disc pl-5 mb-3">
+                <li><strong>Jupiter:</strong> Auroral Studies: ESA's Juno mission has revealed new details about Jupiter's auroras, enhancing our understanding of the planet's magnetic environment and its interactions with solar wind.</li>
+                <li><strong>Saturn:</strong> Enceladus Exploration: The National Academies of Sciences, Engineering, and Medicine have prioritized a mission to Saturn's moon Enceladus, aiming to investigate its subsurface ocean for potential signs of life.</li>
+            </ul>
+            <h3 class="text-lg font-semibold text-blue-300 mb-2 mt-4">❄️ Ice Giants: Uranus, Neptune</h3>
+            <ul class="list-disc pl-5 mb-3">
+                <li><strong>Uranus:</strong> Future Missions: A once-in-a-decade report has recommended that NASA prioritize the exploration of Uranus in the coming decade.</li>
+                <li><strong>Neptune:</strong> Continued Observations: While no major missions have been launched to Neptune recently, ongoing telescopic observations continue to provide valuable data on its atmospheric conditions and dynamic weather patterns.</li>
+            </ul>
+            <h3 class="text-lg font-semibold text-blue-300 mb-2 mt-4">🪐 Dwarf Planets: Pluto, Ceres, Eris, Haumea, Makemake</h3>
+            <ul class="list-disc pl-5 mb-3">
+                <li><strong>Asteroid Vesta:</strong> Recent research suggests that Vesta may be the last remaining fragment of a planet destroyed billions of years ago.</li>
+            </ul>
+            <h3 class="text-lg font-semibold text-blue-300 mb-2 mt-4">🌫️ Atmospheric Highlights</h3>
+            <ul class="list-disc pl-5 mb-3">
+                <li><strong>Mars:</strong> The observation of visible-light auroras indicates active interactions between solar particles and the Martian atmosphere, despite its thin composition.</li>
+                <li><strong>Venus:</strong> Evidence of tectonic activity suggests that Venus's dense CO₂ atmosphere may be influenced by underlying geological processes.</li>
+                <li><strong>Jupiter:</strong> Enhanced auroral activity observed by the Juno mission provides insights into the planet's complex magnetic field and its impact on atmospheric phenomena.</li>
+            </ul>
+        </div>
+        <!-- Space Exploration Tab -->
+        <div id="historyContent" class="text-sm max-h-96 overflow-y-auto pr-2 hidden">
+            <h3 class="text-lg font-semibold text-blue-300 mb-2">🚀 Space Exploration Timeline: 1957–2025</h3>
+            <ul class="list-disc pl-5 mb-3">
+                <li><strong>1957</strong> – Sputnik 1 becomes the first artificial satellite, launched by the USSR.</li>
+                <li><strong>1961</strong> – Yuri Gagarin becomes the first human in space aboard Vostok 1.</li>
+                <li><strong>1969</strong> – Neil Armstrong and Buzz Aldrin land on the Moon during NASA's Apollo 11 mission.</li>
+                <li><strong>1971</strong> – Mariner 9 becomes the first spacecraft to orbit another planet (Mars).</li>
+                <li><strong>1975</strong> – The Apollo-Soyuz Test Project marks the first international crewed space mission between the U.S. and USSR.</li>
+                <li><strong>1977</strong> – NASA launches Voyager 1 and Voyager 2, which later provide unprecedented data on the outer planets.</li>
+                <li><strong>1981</strong> – NASA's Space Shuttle Columbia completes its first flight, inaugurating reusable spacecraft.</li>
+                <li><strong>1986</strong> – ESA's Giotto spacecraft makes a close flyby of Halley's Comet.</li>
+                <li><strong>1990</strong> – The Hubble Space Telescope is launched, revolutionizing our view of the universe.</li>
+                <li><strong>2000</strong> – The International Space Station (ISS) welcomes its first long-term crew.</li>
+                <li><strong>2004</strong> – NASA's Spirit and Opportunity rovers land on Mars, vastly exceeding their expected lifespans.</li>
+                <li><strong>2005</strong> – ESA's Huygens probe lands on Saturn's moon Titan, the first landing on an outer solar system body.</li>
+                <li><strong>2012</strong> – SpaceX's Dragon capsule becomes the first commercial spacecraft to deliver cargo to the ISS.</li>
+                <li><strong>2015</strong> – NASA's New Horizons conducts a historic flyby of Pluto, providing the first close-up images.</li>
+                <li><strong>2019</strong> – China's Chang'e 4 achieves the first soft landing on the Moon's far side.</li>
+                <li><strong>2021</strong> – NASA's Perseverance rover lands on Mars, beginning a mission to collect samples for future return.</li>
+                <li><strong>2022</strong> – NASA's DART mission successfully alters the trajectory of asteroid Dimorphos, demonstrating planetary defense capabilities.</li>
+                <li><strong>2023</strong> – India's Chandrayaan-3 lands near the Moon's south pole, marking a significant achievement in lunar exploration.</li>
+                <li><strong>2024</strong> – NASA's Europa Clipper and ESA's JUICE missions launch to study Jupiter's moons, aiming to understand their potential habitability.</li>
+                <li><strong>2025 (Projected)</strong> – NASA plans the Artemis II mission, aiming to send astronauts around the Moon, the first crewed lunar mission since Apollo.</li>
+            </ul>
+        </div>
+    </div>
+    
+    <!-- Fullscreen Button -->
+<button id="fullscreenBtn" class="fixed bottom-4 right-4 z-40 btn bg-blue-700 hover:bg-blue-500 text-white px-4 py-2 rounded-lg">
+    Fullscreen Mode
+</button>
+<!-- Exit Fullscreen Button -->
+<button id="exitFullscreenBtn" class="fixed bottom-4 right-4 z-50 btn bg-blue-700 hover:bg-blue-500 text-white px-4 py-2 rounded-lg hidden">
+    Exit Fullscreen
+</button>
+    
+    <!-- Planet List Panel (restore this if missing) -->
+    <div id="planetListPanel" class="fixed top-4 right-4 overlay p-4 z-10 planet-list">
+        <h2 class="text-lg font-bold text-blue-400 mb-2">Planets</h2>
+        <div class="flex flex-col space-y-2">
+            <button id="sunBtn" class="planet-btn">Sun</button>
+            <button id="mercuryBtn" class="planet-btn">Mercury</button>
+            <button id="venusBtn" class="planet-btn">Venus</button>
+            <button id="earthBtn" class="planet-btn">Earth</button>
+            <button id="moonBtn" class="planet-btn">Moon</button>
+            <button id="marsBtn" class="planet-btn">Mars</button>
+            <button id="jupiterBtn" class="planet-btn">Jupiter</button>
+            <button id="saturnBtn" class="planet-btn">Saturn</button>
+            <button id="uranusBtn" class="planet-btn">Uranus</button>
+            <button id="neptuneBtn" class="planet-btn">Neptune</button>
+            <button id="plutoBtn" class="planet-btn">Pluto</button>
+        </div>
+    </div>
+    
+    <!-- Planet Cards View -->
+    <div id="planetCardsView" class="fixed inset-0 bg-black bg-opacity-90 z-30 overflow-y-auto py-10 px-4 hidden">
+        <div class="max-w-7xl mx-auto">
+            <div class="flex justify-between items-center mb-8">
+                <h2 class="text-3xl font-bold text-blue-400">Solar System Overview</h2>
+                <button id="closeCardsBtn" class="text-blue-400 hover:text-blue-300">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                </button>
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+                <!-- Cards will be generated by JavaScript -->
+            </div>
+        </div>
+    </div>
+    
+    <!-- Tutorial Modal -->
+    <div id="tutorialModal" class="fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center z-50">
+        <div class="bg-gray-900 p-6 rounded-xl max-w-md mx-4 border border-blue-500 shadow-lg shadow-blue-500/20">
+            <h2 class="text-2xl font-bold text-blue-400 mb-4">Welcome to Solar System Explorer!</h2>
+            <p class="mb-4">Explore our solar system in 3D with realistic physics and educational information.</p>
+            <ul class="list-disc pl-5 mb-4 space-y-2">
+                <li>Click and drag to rotate your view</li>
+                <li>Use the scroll wheel to zoom in and out</li>
+                <li>Select different celestial bodies from the panel</li>
+                <li>Learn about orbital mechanics and space physics</li>
+                <li>Toggle orbits, labels, and scale for different perspectives</li>
+                <li>Try cinematic mode for a guided tour</li>
+            </ul>
+            <button id="startExploringBtn" class="w-full btn bg-blue-600 hover:bg-blue-500 text-white px-4 py-3 rounded-lg text-lg font-semibold">
+                Start Exploring
+            </button>
+        </div>
+    </div>
+
+    <!-- Tooltip -->
+    <div id="tooltip" class="tooltip"></div>
+
+    <!-- Solar System SVG Intro Animation -->
+<div id="solarIntro" class="fixed inset-0 z-[9999] flex items-center justify-center bg-black transition-opacity duration-1000" style="opacity:1;">
+    <div class="relative w-full h-full flex items-center justify-center">
+        <!-- SVG animation from CodePen -->
+        <svg id="solarSVG" width="600" height="600" viewBox="0 0 600 600">
+            <!-- Sun -->
+            <circle cx="300" cy="300" r="40" fill="#FFD600">
+                <animate attributeName="r" values="40;60;40" dur="2s" repeatCount="indefinite"/>
+            </circle>
+            <!-- Orbits -->
+            <circle cx="300" cy="300" r="80" fill="none" stroke="#fff" stroke-opacity="0.2" stroke-width="2"/>
+            <circle cx="300" cy="300" r="130" fill="none" stroke="#fff" stroke-opacity="0.15" stroke-width="2"/>
+            <circle cx="300" cy="300" r="180" fill="none" stroke="#fff" stroke-opacity="0.1" stroke-width="2"/>
+            <!-- Planets (animated) -->
+            <circle id="planet1" r="8" fill="#90caf9"/>
+            <circle id="planet2" r="10" fill="#ff8a65"/>
+            <circle id="planet3" r="6" fill="#a5d6a7"/>
+        </svg>
+        <!-- Overlayed Text -->
+        <div id="introText" class="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+            <h1 class="text-4xl md:text-6xl font-bold text-blue-400 mb-4 drop-shadow-lg">Solar System Explorer</h1>
+            <p class="text-lg md:text-2xl text-white mb-2 drop-shadow">A Journey Through Space</p>
+        </div>
+    </div>
+    <!-- Black overlay for fade in/out -->
+    <div id="introBlack" class="absolute inset-0 bg-black pointer-events-none" style="opacity:1; transition:opacity 1s;"></div>
+</div>
+
+    <script>
+        // Planet data with realistic and display scales
+        const planetData = {
+            sun: {
+                name: "Sun",
+                radius: { real: 109, display: 5 },
+                position: new THREE.Vector3(-30, 0, -30),
+                orbitRadius: { real: 0, display: 0 },
+                orbitSpeed: 0,
+                rotationSpeed: 0.001,
+                color: 0xffdd00,
+                hasRings: false,
+                tilt: 0
+            },
+            mercury: {
+                name: "Mercury",
+                radius: { real: 0.38, display: 0.38 },
+                position: new THREE.Vector3(-20, 0, -20),
+                orbitRadius: { real: 10, display: 10 },
+                orbitSpeed: 0.02,
+                rotationSpeed: 0.0029,
+                color: 0xAAAAAA,
+                hasRings: false,
+                tilt: 0.03
+            },
+            venus: {
+                name: "Venus",
+                radius: { real: 0.95, display: 0.95 },
+                position: new THREE.Vector3(-15, 0, -15),
+                orbitRadius: { real: 15, display: 15 },
+                orbitSpeed: 0.015,
+                rotationSpeed: -0.0006, // Retrograde rotation
+                color: 0xF5DEB3,
+                hasRings: false,
+                tilt: 2.64
+            },
+            earth: {
+                name: "Earth",
+                radius: { real: 1, display: 1 },
+                position: new THREE.Vector3(0, 0, 0),
+                orbitRadius: { real: 20, display: 20 },
+                orbitSpeed: 0.01,
+                rotationSpeed: 0.005,
+                color: 0x1E88E5,
+                hasRings: false,
+                tilt: 23.44
+            },
+            moon: {
+                name: "Moon",
+                radius: { real: 0.27, display: 0.27 },
+                position: new THREE.Vector3(3, 0, 0),
+                orbitRadius: { real: 3, display: 3 },
+                orbitSpeed: 0.015,
+                rotationSpeed: 0.001,
+                color: 0xBDBDBD,
+                hasRings: false,
+                tilt: 6.68,
+                parent: 'earth'
+            },
+            mars: {
+                name: "Mars",
+                radius: { real: 0.53, display: 0.53 },
+                position: new THREE.Vector3(7, 0, 0),
+                orbitRadius: { real: 25, display: 25 },
+                orbitSpeed: 0.008,
+                rotationSpeed: 0.005,
+                color: 0xE53935,
+                hasRings: false,
+                tilt: 25.19
+            },
+            jupiter: {
+                name: "Jupiter",
+                radius: { real: 11.2, display: 2.5 },
+                position: new THREE.Vector3(12, 0, 0),
+                orbitRadius: { real: 35, display: 35 },
+                orbitSpeed: 0.004,
+                rotationSpeed: 0.012,
+                color: 0xF9A825,
+                hasRings: true,
+                tilt: 3.13
+            },
+            saturn: {
+                name: "Saturn",
+                radius: { real: 9.5, display: 2.2 },
+                position: new THREE.Vector3(18, 0, 0),
+                orbitRadius: { real: 45, display: 45 },
+                orbitSpeed: 0.003,
+                rotationSpeed: 0.01,
+                color: 0xFFD54F,
+                hasRings: true,
+                tilt: 26.73
+            },
+            uranus: {
+                name: "Uranus",
+                radius: { real: 4, display: 1.8 },
+                position: new THREE.Vector3(24, 0, 0),
+                orbitRadius: { real: 55, display: 55 },
+                orbitSpeed: 0.002,
+                rotationSpeed: -0.007, // Retrograde rotation
+                color: 0x4DD0E1,
+                hasRings: true,
+                tilt: 97.77 // Extreme tilt
+            },
+            neptune: {
+                name: "Neptune",
+                radius: { real: 3.9, display: 1.7 },
+                position: new THREE.Vector3(30, 0, 0),
+                orbitRadius: { real: 65, display: 65 },
+                orbitSpeed: 0.001,
+                rotationSpeed: 0.008,
+                color: 0x1565C0,
+                hasRings: true,
+                tilt: 28.32
+            },
+            pluto: {
+                name: "Pluto",
+                radius: { real: 0.18, display: 0.4 }, // Slightly enlarged for visibility
+                position: new THREE.Vector3(36, 0, 0),
+                orbitRadius: { real: 75, display: 75 },
+                orbitSpeed: 0.0007,
+                rotationSpeed: -0.003, // Retrograde rotation
+                color: 0x8D6E63,
+                hasRings: false,
+                tilt: 122.53 // Extreme tilt
+            }
+        };
+
+        // Planet facts for cards view
+        const planetFacts = {
+            sun: {
+                funFact: "The Sun contains 99.86% of the mass in the Solar System.",
+                image: createSunIcon()
+            },
+            mercury: {
+                funFact: "Mercury has wrinkles called 'lobate scarps' caused by the planet cooling and shrinking.",
+                image: createPlanetIcon('#AAAAAA')
+            },
+            venus: {
+                funFact: "Venus rotates so slowly that its day is longer than its year.",
+                image: createPlanetIcon('#F5DEB3')
+            },
+            earth: {
+                funFact: "Earth is the only planet not named after a god or goddess.",
+                image: createPlanetIcon('#1E88E5')
+            },
+            moon: {
+                funFact: "The Moon is moving away from Earth at a rate of 3.8 cm per year.",
+                image: createPlanetIcon('#BDBDBD')
+            },
+            mars: {
+                funFact: "Mars has the largest dust storms in the Solar System, sometimes engulfing the entire planet.",
+                image: createPlanetIcon('#E53935')
+            },
+            jupiter: {
+                funFact: "Jupiter's Great Red Spot is shrinking but still large enough to fit Earth inside it.",
+                image: createPlanetIcon('#F9A825')
+            },
+            saturn: {
+                funFact: "Saturn's rings are mostly made of ice chunks, some as small as dust and others as large as buildings.",
+                image: createPlanetIconWithRings('#FFD54F')
+            },
+            uranus: {
+                funFact: "Uranus essentially rotates on its side, likely due to a massive collision in its early history.",
+                image: createPlanetIcon('#4DD0E1')
+            },
+            neptune: {
+                funFact: "Neptune has the strongest winds in the Solar System, reaching 2,100 km/h (1,300 mph).",
+                image: createPlanetIcon('#1565C0')
+            },
+            pluto: {
+                funFact: "Pluto's orbit is so elliptical that it sometimes comes closer to the Sun than Neptune.",
+                image: createPlanetIcon('#8D6E63')
+            }
+        };
+
+        // Initialize Three.js scene
+        let scene, camera, renderer, controls;
+        let planets = {};
+        let orbits = {};
+        let labels = {};
+        let showOrbits = false;
+        let showLabels = false;
+        let realScale = false;
+        let cinematicMode = false;
+        let currentPlanet = 'earth';
+        let clock = new THREE.Clock();
+        let stars;
+        let cinematicCamera;
+        let cinematicControls;
+        let isLoading = true;
+        let loadingProgress = 0;
+        let loadingInterval;
+        let planetsLinedUp = false;
+        let planetAngles = {};
+        
+        let mouse = new THREE.Vector2();
+let raycaster = new THREE.Raycaster();
+
+        // Create planet icon for cards
+        function createPlanetIcon(color) {
+            const canvas = document.createElement('canvas');
+            canvas.width = 100;
+            canvas.height = 100;
+            const ctx = canvas.getContext('2d');
+            
+            // Draw planet
+            ctx.beginPath();
+            ctx.arc(50, 50, 40, 0, Math.PI * 2);
+            ctx.fillStyle = color;
+            ctx.fill();
+            
+            // Add some shading
+            const gradient = ctx.createRadialGradient(30, 30, 0, 50, 50, 40);
+            gradient.addColorStop(0, 'rgba(255, 255, 255, 0.4)');
+            gradient.addColorStop(0.5, 'rgba(255, 255, 255, 0)');
+            gradient.addColorStop(1, 'rgba(0, 0, 0, 0.5)');
+            ctx.beginPath();
+            ctx.arc(50, 50, 40, 0, Math.PI * 2);
+            ctx.fillStyle = gradient;
+            ctx.fill();
+            
+            return canvas.toDataURL();
+        }
+        
+        // Create planet with rings icon for cards
+        function createPlanetIconWithRings(color) {
+            const canvas = document.createElement('canvas');
+            canvas.width = 100;
+            canvas.height = 100;
+            const ctx = canvas.getContext('2d');
+            
+            // Draw rings
+            ctx.beginPath();
+            ctx.ellipse(50, 50, 60, 20, 0, 0, Math.PI * 2);
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
+            ctx.fill();
+            
+            // Draw planet
+            ctx.beginPath();
+            ctx.arc(50, 50, 35, 0, Math.PI * 2);
+            ctx.fillStyle = color;
+            ctx.fill();
+            
+            // Add some shading
+            const gradient = ctx.createRadialGradient(30, 30, 0, 50, 50, 35);
+            gradient.addColorStop(0, 'rgba(255, 255, 255, 0.4)');
+            gradient.addColorStop(0.5, 'rgba(255, 255, 255, 0)');
+            gradient.addColorStop(1, 'rgba(0, 0, 0, 0.5)');
+            ctx.beginPath();
+            ctx.arc(50, 50, 35, 0, Math.PI * 2);
+            ctx.fillStyle = gradient;
+            ctx.fill();
+            
+            // Draw rings on top
+            ctx.beginPath();
+            ctx.ellipse(50, 50, 60, 20, 0, -Math.PI, 0);
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.7)';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+            
+            return canvas.toDataURL();
+        }
+        
+        // Create sun icon for cards
+        function createSunIcon() {
+            const canvas = document.createElement('canvas');
+            canvas.width = 100;
+            canvas.height = 100;
+            const ctx = canvas.getContext('2d');
+
+            // Draw sun
+            ctx.beginPath();
+            ctx.arc(50, 50, 40, 0, Math.PI * 2);
+            const gradient = ctx.createRadialGradient(50, 50, 0, 50, 50, 40);
+            gradient.addColorStop(0, '#FFFFFF');
+            gradient.addColorStop(0.2, '#FFFFAA');
+            gradient.addColorStop(0.7, '#FFDD00');
+            gradient.addColorStop(1, '#FF8800');
+            ctx.fillStyle = gradient;
+            ctx.fill();
+
+            // Draw corona
+            ctx.beginPath();
+            ctx.arc(50, 50, 50, 0, Math.PI * 2);
+            const coronaGradient = ctx.createRadialGradient(50, 50, 40, 50, 50, 50);
+            coronaGradient.addColorStop(0, 'rgba(255, 200, 0, 0.8)');
+            coronaGradient.addColorStop(1, 'rgba(255, 100, 0, 0)');
+            ctx.fillStyle = coronaGradient;
+            ctx.fill();
+
+            return canvas.toDataURL();
+        }
+        
+        // Create celestial bodies
+        function createPlanets() {
+            // Create each planet
+            for (const [key, data] of Object.entries(planetData)) {
+                // Skip sun as it's already created
+                if (key === 'sun') continue;
+                
+                // Skip moon as it will be added to Earth
+                if (key === 'moon') continue;
+                
+                const planetGeometry = new THREE.SphereGeometry(data.radius.display, 32, 32);
+                const planetTexture = createPlanetTexture(key, data.color);
+                const planetMaterial = new THREE.MeshStandardMaterial({
+                    map: planetTexture,
+                    roughness: ['jupiter','saturn','uranus','neptune'].includes(key) ? 0.7 : 0.5,
+                    metalness: ['jupiter','saturn','uranus','neptune'].includes(key) ? 0.1 : 0.3,
+                    emissive: 0x000000,
+                    emissiveIntensity: 0.1
+                });
+                
+                // Add emissive color for gas giants and ice giants
+                if (['jupiter','saturn','uranus','neptune'].includes(key)) {
+                    planetMaterial.emissive = new THREE.Color(planetData[key].color).multiplyScalar(0.2);
+                    planetMaterial.emissiveIntensity = 0.2;
+                }
+                
+                const planet = new THREE.Mesh(planetGeometry, planetMaterial);
+                // Apply axial tilt
+                planet.rotation.x = THREE.MathUtils.degToRad(data.tilt);
+                
+                // Position planet
+                if (key !== 'moon') {
+                    const angle = Math.random() * Math.PI * 2;
+                    planet.position.x = Math.cos(angle) * data.orbitRadius.display;
+                    planet.position.z = Math.sin(angle) * data.orbitRadius.display;
+                    planetAngles[key] = angle; // Store the unique starting angle
+                }
+                
+                scene.add(planet);
+                planets[key] = planet;
+                
+                // Add atmosphere for terrestrial planets
+                if (['mercury', 'venus', 'earth', 'mars'].includes(key)) {
+                    const atmosphereSize = {
+                        'mercury': 1.01, // Very thin
+                        'venus': 1.15,   // Very thick
+                        'earth': 1.05,   // Moderate
+                        'mars': 1.02     // Thin
+                    };
+                    
+                    const atmosphereColor = {
+                        'mercury': 0xaaaaaa,
+                        'venus': 0xf5deb3,
+                        'earth': 0x81d4fa,
+                        'mars': 0xffcdd2
+                    };
+                    
+                    const atmosphereOpacity = {
+                        'mercury': 0.05,
+                        'venus': 0.4,
+                        'earth': 0.2,
+                        'mars': 0.1
+                    };
+                    
+                    const atmosphere = createAtmosphere(
+                        data.radius.display * atmosphereSize[key],
+                        atmosphereColor[key],
+                        atmosphereOpacity[key]
+                    );
+                    planet.add(atmosphere);
+                }
+                
+                // Add rings for gas giants
+                if (data.hasRings) {
+                    createPlanetRings(planet, key, data);
+                }
+                
+                if (key !== 'sun' && key !== 'moon') {
+                    const orbitCurve = new THREE.EllipseCurve(
+                        0, 0, // ax, aY
+                        data.orbitRadius.display, data.orbitRadius.display // xRadius, yRadius
+                    );
+                    const points = orbitCurve.getPoints(128);
+                    const orbitGeometry = new THREE.BufferGeometry().setFromPoints(points.map(p => new THREE.Vector3(p.x, 0, p.y)));
+                    const orbitMaterial = new THREE.LineBasicMaterial({ color: 0x3b82f6, transparent: true, opacity: 0.3 });
+                    const orbitLine = new THREE.Line(orbitGeometry, orbitMaterial);
+                    orbitLine.visible = showOrbits;
+                    scene.add(orbitLine);
+                    orbits[key] = orbitLine;
+                }
+                
+                // Label for the planet
+                const labelDiv = document.createElement('div');
+                labelDiv.className = 'planet-label';
+                labelDiv.textContent = data.name;
+                labelDiv.style.position = 'absolute';
+                labelDiv.style.color = '#fff';
+                labelDiv.style.fontSize = '14px';
+                labelDiv.style.pointerEvents = 'none';
+                labelDiv.style.display = showLabels ? 'block' : 'none';
+                document.body.appendChild(labelDiv);
+                labels[key] = labelDiv;
+            }
+            
+            // Add Moon to Earth
+            const moonData = planetData.moon;
+            const moonGeometry = new THREE.SphereGeometry(moonData.radius.display, 32, 32);
+            const moonTexture = createPlanetTexture('moon', moonData.color);
+            const moonMaterial = new THREE.MeshPhongMaterial({ 
+                map: moonTexture,
+                bumpScale: 0.02,
+                specular: new THREE.Color(0x222222),
+                shininess: 2
+            });
+            
+            const moon = new THREE.Mesh(moonGeometry, moonMaterial);
+            moon.position.set(moonData.orbitRadius.display, 0, 0);
+            scene.add(moon);
+            planets.moon = moon;
+        }
+        
+        // Create planet rings
+        function createPlanetRings(planet, planetKey, data) {
+            if (planetKey !== 'saturn') {
+                // Use your existing logic for other planets
+                // ...existing code for jupiter, uranus, neptune...
+                return;
+            }
+
+            // SATURN: More realistic, multi-band ring with transparency
+            const innerRadius = data.radius.display * 1.4;
+            const outerRadius = data.radius.display * 2.8; // wider, more dramatic
+            const ringsGeometry = new THREE.RingGeometry(innerRadius, outerRadius, 128);
+
+            // Custom ring texture for Saturn
+            const size = 1024;
+            const canvas = document.createElement('canvas');
+            canvas.width = size;
+            canvas.height = size;
+            const ctx = canvas.getContext('2d');
+
+            // Draw multiple bands for Saturn's rings
+            for (let i = 0; i < size / 2; i++) {
+                const radius = i;
+                let alpha = 0;
+                let color = '#fffbe7';
+                // Simulate Saturn's ring bands
+                if (radius > 180 && radius < 220) { color = '#e0c97a'; alpha = 0.5; }
+                else if (radius > 230 && radius < 260) { color = '#fffbe7'; alpha = 0.25; }
+                else if (radius > 270 && radius < 320) { color = '#bca77b'; alpha = 0.35; }
+                else if (radius > 340 && radius < 370) { color = '#fffbe7'; alpha = 0.18; }
+                else if (radius > 390 && radius < 420) { color = '#e0c97a'; alpha = 0.3; }
+                else if (radius > 430 && radius < 470) { color = '#fffbe7'; alpha = 0.12; }
+                else { color = '#fffbe7'; alpha = 0.08; }
+                ctx.beginPath();
+                ctx.arc(size / 2, size / 2, radius, 0, Math.PI * 2);
+                ctx.strokeStyle = color;
+                ctx.globalAlpha = alpha;
+                ctx.lineWidth = 2;
+                ctx.stroke();
+            }
+            ctx.globalAlpha = 1;
+
+            const ringTexture = new THREE.CanvasTexture(canvas);
+            ringTexture.wrapS = THREE.ClampToEdgeWrapping;
+            ringTexture.wrapT = THREE.ClampToEdgeWrapping;
+
+            const ringsMaterial = new THREE.MeshBasicMaterial({
+                map: ringTexture,
+                side: THREE.DoubleSide,
+                transparent: true,
+                opacity: 0.85
+            });
+
+            const rings = new THREE.Mesh(ringsGeometry, ringsMaterial);
+            rings.rotation.x = Math.PI / 2;
+            planet.add(rings);
+        }
+        
+        // Create a procedural texture for planets
+        function createPlanetTexture(planetKey, baseColor) {
+            const canvas = document.createElement('canvas');
+            canvas.width = 1024;
+            canvas.height = 512;
+            const ctx = canvas.getContext('2d');
+            
+            // Base color
+            ctx.fillStyle = `#${baseColor.toString(16).padStart(6, '0')}`;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            // Planet-specific texturing
+            switch (planetKey) {
+                case 'mercury':
+                    createCraterTexture(ctx, canvas, '#AAAAAA', '#888888', '#CCCCCC');
+                    break;
+                case 'venus':
+                    createCloudyTexture(ctx, canvas, '#F5DEB3', '#E6C9A8', '#D4B38B');
+                    break;
+                case 'earth':
+                    createEarthTexture(ctx, canvas);
+                    break;
+                case 'moon':
+                    createCraterTexture(ctx, canvas, '#BDBDBD', '#9E9E9E', '#E0E0E0');
+                    break;
+                case 'mars':
+                    createMarsTexture(ctx, canvas);
+                    break;
+                case 'jupiter':
+                    createGasGiantTexture(ctx, canvas, '#F9A825', '#FFB74D', '#FFF176', true);
+                    break;
+                case 'saturn':
+                    createGasGiantTexture(ctx, canvas, '#FFD54F', '#FFE082', '#FFF9C4', false);
+                    break;
+                case 'uranus':
+                    createIceGiantTexture(ctx, canvas, '#4DD0E1', '#80DEEA', '#B2EBF2');
+                    break;
+                case 'neptune':
+                    createIceGiantTexture(ctx, canvas, '#1565C0', '#1976D2', '#2196F3');
+                    break;
+                case 'pluto':
+                    createPlutoTexture(ctx, canvas);
+                    break;
+            }
+            
+            const texture = new THREE.CanvasTexture(canvas);
+            return texture;
+        }
+        
+        // Create crater texture for rocky bodies
+        function createCraterTexture(ctx, canvas, baseColor, darkColor, lightColor) {
+            // Add noise/spots
+            for (let i = 0; i < 10000; i++) {
+                const x = Math.random() * canvas.width;
+                const y = Math.random() * canvas.height;
+                const size = Math.random() * 2;
+                ctx.beginPath();
+                ctx.arc(x, y, size, 0, Math.PI * 2);
+                ctx.fillStyle = Math.random() > 0.5 ? darkColor : lightColor;
+                ctx.fill();
+            }
+            
+            // Create craters
+            for (let i = 0; i < 50; i++) {
+                const x = Math.random() * canvas.width;
+                const y = Math.random() * canvas.height;
+                const size = 5 + Math.random() * 30;
+                
+                // Crater rim
+                ctx.beginPath();
+                ctx.arc(x, y, size, 0, Math.PI * 2);
+                ctx.fillStyle = lightColor;
+                ctx.fill();
+                
+                // Crater interior
+                ctx.beginPath();
+                ctx.arc(x, y, size * 0.85, 0, Math.PI * 2);
+                ctx.fillStyle = darkColor;
+                ctx.fill();
+                
+                // Crater center
+                ctx.beginPath();
+                ctx.arc(x, y, size * 0.3, 0, Math.PI *  2);
+                ctx.fillStyle = baseColor;
+                ctx.fill();
+            }
+        }
+        
+        // Create cloudy texture for Venus
+        function createCloudyTexture(ctx, canvas, baseColor, midColor, darkColor) {
+            // Create swirling cloud patterns
+            for (let i = 0; i < 20; i++) {
+                const x = Math.random() * canvas.width;
+                const y = Math.random() * canvas.height;
+                const size = 50 + Math.random() *   100;
+                
+                const gradient = ctx.createRadialGradient(x, y, 0, x, y, size);
+                gradient.addColorStop(0, baseColor);
+                gradient.addColorStop(0.5, midColor);
+                gradient.addColorStop(1, darkColor);
+                
+                ctx.beginPath();
+                ctx.arc(x, y, size, 0, Math.PI * 2);
+                ctx.fillStyle = gradient;
+                ctx.globalAlpha = 0.3;
+                ctx.fill();
+                ctx.globalAlpha = 1;
+            }
+            
+            // Add swirling patterns
+            for (let y = 0; y < canvas.height; y += 20) {
+                const amplitude = 20 + Math.random() * 30;
+                const frequency = 0.01 + Math.random() * 0.02;
+                const phase = Math.random() * Math.PI * 2;
+                
+                ctx.beginPath();
+                ctx.moveTo(0, y);
+                
+                for (let x = 0; x < canvas.width; x += 5) {
+                    const yOffset = y + Math.sin(x * frequency + phase) * amplitude;
+                    ctx.lineTo(x, yOffset);
+                }
+                
+                ctx.strokeStyle = midColor;
+                ctx.globalAlpha = 0.2;
+                ctx.lineWidth = 10 + Math.random() * 20;
+                ctx.stroke();
+                ctx.globalAlpha = 1;
+            }
+        }
+        
+        // Create Earth texture
+        function createEarthTexture(ctx, canvas) {
+            // Create oceans
+            ctx.fillStyle = '#1565C0';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            // Create continents
+            for (let i = 0; i < 7; i++) {
+                const x = Math.random() * canvas.width;
+                const y = Math.random() * canvas.height;
+                const size = 100 + Math.random() * 150;
+                
+                ctx.beginPath();
+                
+                // Create irregular continent shape
+                const points = [];
+                const numPoints = 15 + Math.floor(Math.random() * 10);
+                
+                for (let j = 0; j < numPoints; j++) {
+                    const angle = (j / numPoints) * Math.PI *  2;
+                    const radius = size * (0.5 + Math.random() * 0.5);
+                   
+                    const px = x + Math.cos(angle) * radius;
+                    const py = y + Math.sin(angle) * radius;
+                    points.push({ x: px, y: py });
+                }
+                
+                ctx.moveTo(points[0].x, points[0].y);
+                for (let j = 1; j < points.length; j++) {
+                    ctx.lineTo(points[j].x, points[j].y);
+                }
+                ctx.closePath();
+                
+                // Random continent color (green to brown)
+                const r = 100 + Math.floor(Math.random() * 155);
+                const g = 150 + Math.floor(Math.random() * 105);
+                                              const b = 50 + Math.floor(Math.random() * 50);
+                ctx.fillStyle = `rgb(${r}, ${g}, ${b})`;
+                ctx.fill();
+            }
+            
+            // Add cloud patterns
+            for (let i = 0; i < 30; i++) {
+                const x = Math.random() * canvas.width;
+                const y = Math.random() * canvas.height;
+                const size = 30 + Math.random() * 80;
+                
+                ctx.beginPath();
+                ctx.arc(x, y, size, 0, Math.PI * 2);
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.4)';
+                ctx.fill();
+            }
+            
+            // Add ice caps
+            ctx.beginPath();
+            ctx.ellipse(canvas.width / 2, 40, 180, 30, 0, 0, Math.PI * 2);
+            ctx.fillStyle = 'rgba(255,255,255,0.7)';
+            ctx.fill();
+
+            ctx.beginPath();
+            ctx.ellipse(canvas.width / 2, canvas.height - 40, 180, 30, 0, 0, Math.PI * 2);
+            ctx.fillStyle = 'rgba(255,255,255,0.7)';
+            ctx.fill();
+        }
+        
+        // Create Mars texture
+        function createMarsTexture(ctx, canvas) {
+            // Base color
+            ctx.fillStyle = '#E53935';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            // Add surface features
+            for (let i = 0; i < 1000; i++) {
+                               const x = Math.random() * canvas.width;
+                const y = Math.random() * canvas.height;
+                const size = Math.random() * 3;
+                ctx.beginPath();
+                ctx.arc(x, y, size, 0, Math.PI * 2);
+                ctx.fillStyle = Math.random() > 0.5 ? '#BF360C' : '#E57373';
+                ctx.fill();
+            }
+            
+            // Add polar ice caps
+            ctx.beginPath();
+            ctx.ellipse(canvas.width / 2, 40, 60, 20, 0, 0, Math.PI * 2);
+           
+            ctx.fillStyle = 'rgba(255,255,255,0.9)';
+
+           
+
+            ctx.fill();
+
+            ctx.beginPath();
+            ctx.ellipse(canvas.width / 2, canvas.height - 40, 60, 20, 0, 0, Math.PI * 2);
+            ctx.fillStyle = 'rgba(255,255,255,0.9)';
+            ctx.fill();
+        }
+        
+        // Create gas giant texture (Jupiter, Saturn)
+        function createGasGiantTexture(ctx, canvas, baseColor, stripeColor1, stripeColor2, isJupiter) {
+            // Base color
+            ctx.fillStyle = `#${baseColor.toString(16).padStart(6, '0')}`;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            // Create stripes
+            const stripeCount = 6;
+            for (let i = 0; i < stripeCount; i++) {
+                const y = (i / stripeCount) * canvas.height;
+                const height = canvas.height / stripeCount;
+                
+                ctx.fillStyle = i % 2 === 0 ? `#${stripeColor1.toString(16).padStart(6, '0')}` : `#${stripeColor2.toString(16).padStart(6, '0')}`;
+                ctx.fillRect(0, y, canvas.width, height);
+            }
+            
+            // Add Jupiter's Great Red Spot
+            if (isJupiter) {
+                ctx.beginPath();
+                ctx.ellipse(canvas.width * 0.7, canvas.height * 0.5, 50, 20, 0, 0, Math.PI * 2);
+                ctx.fillStyle = '#C62828';
+                ctx.fill();
+            }
+        }
+        
+        // Create ice giant texture (Uranus, Neptune)
+        function createIceGiantTexture(ctx, canvas, baseColor, lightColor, darkColor) {
+            // Base color
+            ctx.fillStyle = `#${baseColor.toString(16).padStart(6, '0')}`;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            // Add noise
+            for (let i = 0; i < 5000; i++) {
+                const x = Math.random() * canvas.width;
+                const y = Math.random() * canvas.height;
+                const size = Math.random() * 2;
+                ctx.beginPath();
+                ctx.arc(x, y, size, 0, Math.PI * 2);
+                ctx.fillStyle = Math.random() > 0.7 ? lightColor : darkColor;
+                ctx.fill();
+            }
+        }
+        
+        // Create Pluto texture
+        function createPlutoTexture(ctx, canvas) {
+            // Base color
+            ctx.fillStyle = '#8D6E63';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            // Add surface features
+            for (let i = 0; i < 500; i++) {
+                const x = Math.random() * canvas.width;
+                const y = Math.random() * canvas.height;
+                const size = Math.random() * 3;
+                ctx.beginPath();
+                ctx.arc(x, y, size, 0, Math.PI * 2);
+                ctx.fillStyle = Math.random() > 0.5 ? '#BDBDBD' : '#9E9E9E';
+                ctx.fill();
+            }
+            
+            // Add polar ice caps
+            ctx.beginPath();
+            ctx.ellipse(canvas.width / 2, 40, 30, 10, 0, 0, Math.PI * 2);
+            ctx.fillStyle = 'rgba(255,255,255,0.9)';
+            ctx.fill();
+
+            ctx.beginPath();
+            ctx.ellipse(canvas.width / 2, canvas.height - 40, 30, 10, 0, 0, Math.PI * 2);
+            ctx.fillStyle = 'rgba(255,255,255,0.9)';
+            ctx.fill();
+        }
+
+        // Create Earth cloud texture
+        function createEarthCloudTexture() {
+            const canvas = document.createElement('canvas');
+            canvas.width = 1024;
+            canvas.height = 512;
+            const ctx = canvas.getContext('2d');
+            for (let i = 0; i < 100; i++) {
+                const x = Math.random() * canvas.width;
+                const y = Math.random() * canvas.height;
+                const size = 40 + Math.random() * 80;
+                ctx.beginPath();
+                ctx.arc(x, y, size, 0, Math.PI * 2);
+                ctx.fillStyle = 'rgba(255,255,255,0.25)';
+                ctx.fill();
+            }
+            return new THREE.CanvasTexture(canvas);
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            // Animate SVG planets
+            function animateSVGPlanets() {
+                const t = Date.now() * 0.001;
+                document.getElementById('planet1').setAttribute('cx', 300 + Math.cos(t * 1.2) * 80);
+                document.getElementById('planet1').setAttribute('cy', 300 + Math.sin(t * 1.2) * 80);
+                document.getElementById('planet2').setAttribute('cx', 300 + Math.cos(t * 0.8 + 1) * 130);
+                document.getElementById('planet2').setAttribute('cy', 300 + Math.sin(t * 0.8 + 1) * 130);
+                document.getElementById('planet3').setAttribute('cx', 300 + Math.cos(t * 0.5 + 2) * 180);
+                document.getElementById('planet3').setAttribute('cy', 300 + Math.sin(t * 0.5 + 2) * 180);
+                requestAnimationFrame(animateSVGPlanets);
+            }
+            animateSVGPlanets();
+
+            // Fade in from black
+            setTimeout(() => {
+                document.getElementById('introBlack').style.opacity = 0;
+            }, 200);
+
+            // Show text, then fade out after a delay
+            setTimeout(() => {
+                document.getElementById('introText').style.opacity = 1;
+            }, 800);
+
+            // Fade to black after a few seconds, then reveal app
+            setTimeout(() => {
+                document.getElementById('introBlack').style.opacity = 1;
+                document.getElementById('introText').style.opacity = 0;
+            }, 3400);
+
+            // Remove intro and show app, THEN CALL init()
+            setTimeout(() => {
+                document.getElementById('solarIntro').style.opacity = 0;
+                setTimeout(() => {
+                    document.getElementById('solarIntro').style.display = 'none';
+                    init();
+                }, 1000);
+            }, 4400);
+
+            // Hide tutorial modal on "Start Exploring"
+            document.getElementById('startExploringBtn').addEventListener('click', function() {
+                document.getElementById('tutorialModal').style.display = 'none';
+            });
+
+            // Dropdown menu logic
+            document.getElementById('menuToggleBtn').addEventListener('click', function(e) {
+                e.stopPropagation();
+                const menu = document.getElementById('gooeyMenu');
+                menu.style.display = (menu.style.display === 'none' || !menu.style.display) ? 'block' : 'none';
+            });
+            document.addEventListener('click', function(e) {
+                const menu = document.getElementById('gooeyMenu');
+                const btn = document.getElementById('menuToggleBtn');
+                if (!menu.contains(e.target) && !btn.contains(e.target)) {
+                    menu.style.display = 'none';
+                }
+            });
+
+    // --- PLANET BUTTONS ---
+    const planetButtons = [
+        'sun', 'mercury', 'venus', 'earth', 'moon', 'mars',
+        'jupiter', 'saturn', 'uranus', 'neptune', 'pluto'
+    ];
+    planetButtons.forEach(key => {
+        const btn = document.getElementById(key + 'Btn');
+
+
+
+        if (btn) {
+            btn.addEventListener('click', () => {
+                currentPlanet = key;
+                planetButtons.forEach(k => {
+                    const b = document.getElementById(k + 'Btn');
+                    if (b) b.classList.toggle('active', k === key);
+                });
+                showPlanetInfo(key);
+                if (planets[key]) {
+                    // Smooth camera move
+                    smoothCameraMove(
+                        planets[key].position.clone().add(new THREE.Vector3(0, 5, 15)),
+
+                        planets[key].position
+                    );
+                }
+            });
+        }
+    });
+
+    // --- INFO PANEL TOGGLE ---
+    document.getElementById('toggleInfoBtn').addEventListener('click', () => {
+        document.getElementById('infoPanel').classList.toggle('open');
+    });
+
+    // --- DROPDOWN MENU BUTTONS ---
+    document.getElementById('educationBtn').addEventListener('click', () => {
+        document.getElementById('educationalOverlay').classList.remove('hidden');
+        document.getElementById('gooeyMenu').style.display = 'none';
+    });
+
+    // Show Orbits
+    document.getElementById('toggleOrbitsBtn').addEventListener('click', () => {
+        showOrbits = !showOrbits;
+        document.getElementById('gooeyMenu').style.display = 'none';
+
+
+        // Show/hide orbit lines
+        Object.values(orbits).forEach(orbit => {
+            orbit.visible = showOrbits;
+        });
+    });
+    
+    // Show Labels
+    document.getElementById('toggleLabelsBtn').addEventListener('click', () => {
+        showLabels = !showLabels;
+        document.getElementById('gooeyMenu').style.display = 'none';
+        // Show/hide labels
+        Object.values(labels).forEach(label => {
+            label.visible = showLabels;
+        });
+    });
+    
+    // Toggle Scale
+    document.getElementById('toggleScaleBtn').addEventListener('click', () => {
+        realScale = !realScale;
+        document.getElementById('gooeyMenu').style.display = 'none';
+
+        // Remove old planet meshes
+        Object.values(planets).forEach(planet => scene.remove(planet));
+        planets = {};
+
+        // REMOVE OLD LABELS from DOM
+        Object.values(labels).forEach(label => {
+            if (label && label.parentNode) label.parentNode.removeChild(label);
+        });
+        labels = {};
+
+        // Remove the Sun mesh
+        if (planets.sun) {
+            scene.remove(planets.sun);
+            delete planets.sun;
+        }
+
+        // Recreate Sun and planets
+        createSun();
+        createPlanets();
+    });
+    
+    // Cinematic Mode
+    document.getElementById('viewModeBtn').addEventListener('click', () => {
+        cinematicMode = !cinematicMode;
+        document.getElementById('gooeyMenu').style.display = 'none';
+        // Example: animate camera to a wide view or back to current planet
+        if (cinematicMode) {
+            const t = clock.getElapsedTime() * 0.2;
+            const radius = 120;
+            camera.position.x = Math.cos(t) * radius;
+            camera.position.z = Math.sin(t) * radius;
+            camera.position.y = 40 + Math.sin(t * 0.5) * 10;
+            camera.lookAt(0, 0, 0);
+        } else {
+            if (planets[currentPlanet]) {
+                smoothCameraMove(
+                    planets[currentPlanet].position.clone().add(new THREE.Vector3(0, 5, 15)),
+                    planets[currentPlanet].position
+                );
+            }
+        }
+    });
+
+    // --- EDUCATIONAL OVERLAY TABS ---
+    document.getElementById('closeOverlayBtn').addEventListener('click', () => {
+        document.getElementById('educationalOverlay').classList.add('hidden');
+    });
+    document.getElementById('orbitalTab').addEventListener('click', () => {
+        setTab('orbital');
+    });
+    document.getElementById('planetsTab').addEventListener('click', () => {
+        setTab('planets');
+    });
+    document.getElementById('historyTab').addEventListener('click', () => {
+        setTab('history');
+    });
+
+    function setTab(tab) {
+        document.getElementById('orbitalContent').classList.toggle('hidden', tab !== 'orbital');
+        document.getElementById('planetsContent').classList.toggle('hidden', tab !== 'planets');
+        document.getElementById('historyContent').classList.toggle('hidden', tab !== 'history');
+        document.getElementById('orbitalTab').classList.toggle('active', tab === 'orbital');
+        document.getElementById('planetsTab').classList.toggle('active', tab === 'planets');
+        document.getElementById('historyTab').classList.toggle('active', tab === 'history');
+    }
+
+    // --- SHOW PLANET INFO ---
+    function showPlanetInfo(key) {
+        [
+            'sun','mercury','venus','earth','moon','mars',
+            'jupiter','saturn','uranus','neptune','pluto'
+        ].forEach(k => {
+            const info = document.getElementById(k + 'Info');
+            if (info) info.classList.toggle('hidden', k !== key);
+        });
+        document.getElementById('infoTitle').textContent =
+            planetData[key].name || key.charAt(0).toUpperCase() + key.slice(1);
+    }
+
+    // Fullscreen
+    document.getElementById('fullscreenBtn').addEventListener('click', () => {
+        const elem = document.documentElement;
+        if (elem.requestFullscreen) elem.requestFullscreen();
+        else if (elem.mozRequestFullScreen) elem.mozRequestFullScreen();
+        else if (elem.webkitRequestFullscreen) elem.webkitRequestFullscreen();
+        else if (elem.msRequestFullscreen) elem.msRequestFullscreen();
+        document.getElementById('fullscreenBtn').classList.add('hidden');
+        document.getElementById('exitFullscreenBtn').classList.remove('hidden');
+    });
+    document.getElementById('exitFullscreenBtn').addEventListener('click', () => {
+        if (document.exitFullscreen) document.exitFullscreen();
+        else if (document.mozCancelFullScreen) document.mozCancelFullScreen();
+        else if (document.webkitExitFullscreen) document.webkitExitFullscreen();
+        else if (document.msExitFullscreen) document.msExitFullscreen();
+        document.getElementById('fullscreenBtn').classList.remove('hidden');
+        document.getElementById('exitFullscreenBtn').classList.add('hidden');
+    });
+    document.addEventListener('fullscreenchange', () => {
+        if (!document.fullscreenElement) {
+            document.getElementById('fullscreenBtn').classList.remove('hidden');
+            document.getElementById('exitFullscreenBtn').classList.add('hidden');
+        }
+    });
+});
+        function init() {
+    // Set up renderer
+    renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    document.getElementById('canvas-container').appendChild(renderer.domElement);
+
+    // Set up scene and camera
+    scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x000510);
+
+    camera = new THREE.PerspectiveCamera(
+        60,
+        window.innerWidth / window.innerHeight,
+        0.1,
+        1000
+    );
+    camera.position.set(0, 0, 60);
+
+    // Controls
+    controls = new THREE.OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.05;
+
+    // Lighting
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
+    scene.add(ambientLight);
+    const directionalLight = new THREE.PointLight(0xffffff, 1.2, 0, 2);
+    directionalLight.position.set(0, 0, 0);
+    scene.add(directionalLight);
+
+    // Sun
+    createSun();
+
+    // Planets
+    createPlanets();
+
+    // Add stars
+    addStars();
+
+    // Start animation loop
+    animate();
+
+    // Handle window resize
+    window.addEventListener('resize', () => {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+}
+
+// Create Sun
+function createSun() {
+    const sunGeometry = new THREE.SphereGeometry(planetData.sun.radius.display, 64, 64);
+    const sunMaterial = new THREE.MeshBasicMaterial({ color: planetData.sun.color });
+    const sun = new THREE.Mesh(sunGeometry, sunMaterial);
+    sun.position.set(0, 0, 0);
+    scene.add(sun);
+    planets.sun = sun;
+
+    // --- Soft Glow using Sprite ---
+    const spriteMaterial = new THREE.SpriteMaterial({
+        map: createSunGlowTexture(),
+        color: 0xffffff,
+        transparent: true,
+        opacity: 0.85,
+        depthWrite: false,
+        depthTest: false,
+        blending: THREE.AdditiveBlending
+    });
+    const sprite = new THREE.Sprite(spriteMaterial);
+    const glowSize = planetData.sun.radius.display * 10; // Adjust for desired glow size
+    sprite.scale.set(glowSize, glowSize, 1);
+    sun.add(sprite);
+}
+
+// Helper to create a radial gradient texture for the glow
+function createSunGlowTexture() {
+    const size = 256;
+    const canvas = document.createElement('canvas');
+    canvas.width = size;
+    canvas.height = size;
+    const ctx = canvas.getContext('2d');
+
+    // Create radial gradient (center bright, edges transparent)
+    const gradient = ctx.createRadialGradient(
+        size / 2, size / 2, 0,
+        size / 2, size / 2, size / 2
+    );
+    gradient.addColorStop(0, 'rgba(255,255,200,1)');
+    gradient.addColorStop(0.2, 'rgba(255,230,100,0.8)');
+    gradient.addColorStop(0.5, 'rgba(255,180,50,0.4)');
+    gradient.addColorStop(1, 'rgba(255,180,50,0)');
+
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, size, size);
+
+    return new THREE.CanvasTexture(canvas);
+}
+
+// Create atmosphere
+function createAtmosphere(radius, color, opacity) {
+    const geometry = new THREE.SphereGeometry(radius, 32, 32);
+    const material = new THREE.MeshPhongMaterial({
+        color: color,
+        transparent: true,
+        opacity: opacity,
+        side: THREE.DoubleSide,
+        depthWrite: false
+    });
+    return new THREE.Mesh(geometry, material);
+}
+
+// Add stars
+function addStars() {
+    const starGeometry = new THREE.BufferGeometry();
+    const starCount = 20000;
+    const positions = [];
+    const colors = [];
+    const color = new THREE.Color();
+
+    for (let i = 0; i < starCount; i++) {
+        // Spread stars in a large sphere
+        const r = 1300 + Math.random() * 2500;
+        const theta = Math.random() * Math.PI * 2;
+        const phi = Math.acos(2 * Math.random() - 1);
+
+        const x = r * Math.sin(phi) * Math.cos(theta);
+        const y = r * Math.sin(phi) * Math.sin(theta);
+        const z = r * Math.cos(phi);
+
+        positions.push(x, y, z);
+
+        // Star color: mostly white, some blue/yellow/red
+        if (Math.random() < 1.2) {
+            color.setHSL(0.1 + Math.random() * 0.1, 0, 1); // white
+        } else if (Math.random() < 0.85) {
+            color.setHSL(0.6 + Math.random() * 0.1, 1, 2.8); // blue
+        } else if (Math.random() < 1.93) {
+            color.setHSL(0.13, 1, 1.7); // yellow
+        } else {
+            color.setHSL(0, 1, 1.7); // red
+        }
+        colors.push(color.r, color.g, color.b);
+    }
+
+    starGeometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+    starGeometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+
+    const starMaterial = new THREE.PointsMaterial({
+        size: 2,
+        vertexColors: true,
+        transparent: true,
+        opacity: 0.85,
+        depthWrite: false,
+        blending: THREE.AdditiveBlending
+    });
+
+    const stars = new THREE.Points(starGeometry, starMaterial);
+    scene.add(stars);
+}
+
+// Animation loop
+function animate() {
+    requestAnimationFrame(animate);
+
+    // Animate planets
+    const elapsed = clock.getElapsedTime();
+    for (const [key, data] of Object.entries(planetData)) {
+        if (key === 'sun') continue;
+        const planet = planets[key];
+        if (!planet) continue;
+
+        // Orbit (except moon)
+        if (key !== 'moon') {
+            const orbitRadius = data.orbitRadius.display;
+            const orbitSpeed = data.orbitSpeed;
+            const angle = planetAngles[key] + elapsed * orbitSpeed;
+            planet.position.x = Math.cos(angle) * orbitRadius;
+            planet.position.z = Math.sin(angle) * orbitRadius;
+        }
+
+        // Moon orbits Earth
+        if (key === 'moon') {
+            const earth = planets['earth'];
+            const moonData = planetData['moon'];
+            const orbitRadius = moonData.orbitRadius.display;
+            const orbitSpeed = moonData.orbitSpeed;
+            const angle = (planetAngles['moon'] || 0) + elapsed * orbitSpeed;
+            planet.position.x = earth.position.x + Math.cos(angle) * orbitRadius;
+            planet.position.z = earth.position.z + Math.sin(angle) * orbitRadius;
+            planet.position.y = earth.position.y;
+        }
+
+        // Spin planet on its axis
+        planet.rotation.y += data.rotationSpeed;
+    }
+
+    // Update label positions
+    for (const [key, planet] of Object.entries(planets)) {
+        if (labels[key]) {
+            const vector = planet.position.clone().project(camera);
+            const x = (vector.x * 0.5 + 0.5) * window.innerWidth;
+            const y = (-vector.y * 0.5 + 0.5) * window.innerHeight;
+            labels[key].style.left = `${x}px`;
+            labels[key].style.top = `${y}px`;
+            labels[key].style.display = showLabels ? 'block' : 'none';
+        }
+    }
+
+    controls.update();
+    renderer.render(scene, camera);
+    
+    // --- Twinkling stars effect ---
+    starTwinklePhase += 1.11;
+    scene.traverse(obj => {
+        if (obj.isPoints && obj.material && obj.material.size) {
+            obj.material.size = 2 + Math.sin(starTwinklePhase + obj.id) * 1.5;
+        }
+    });
+}
+
+// Create a simple radial gradient ring texture
+function createRingTexture(planetKey) {
+    const size = 512;
+    const canvas = document.createElement('canvas');
+    canvas.width = size;
+    canvas.height = size;
+    const ctx = canvas.getContext('2d');
+
+    // Transparent background
+    ctx.clearRect(0, 0, size, size);
+
+    // Draw ring gradient
+    const gradient = ctx.createRadialGradient(
+        size / 2, size / 2, size * 0.4,
+        size / 2, size / 2, size * 0.5
+    );
+    // Color based on planet
+    let color = '#fff';
+    if (planetKey === 'saturn') color = '#ffe082';
+    if (planetKey === 'jupiter') color = '#f9a825';
+    if (planetKey === 'uranus') color = '#b2ebf2';
+    if (planetKey === 'neptune') color = '#90caf9';
+
+    gradient.addColorStop(0, color + '00'); // transparent
+    gradient.addColorStop(0.7, color + '88'); // semi
+    gradient.addColorStop(1, color + '00'); // transparent
+
+    ctx.beginPath();
+    ctx.arc(size / 2, size / 2, size * 0.45, 0, Math.PI * 2);
+    ctx.lineWidth = size * 0.1;
+    ctx.strokeStyle = gradient;
+    ctx.stroke();
+
+    return new THREE.CanvasTexture(canvas);
+}
+
+function smoothCameraMove(targetPos, lookAt, duration = 1200) {
+    const startPos = camera.position.clone();
+    const startLook = controls.target.clone();
+    const endPos = targetPos.clone();
+    const endLook = lookAt.clone();
+    const startTime = performance.now();
+
+    function animateCam(now) {
+        const t = Math.min((now - startTime) / duration, 1);
+        camera.position.lerpVectors(startPos, endPos, t);
+        controls.target.lerpVectors(startLook, endLook, t);
+        controls.update();
+        if (t < 1) requestAnimationFrame(animateCam);
+    }
+    requestAnimationFrame(animateCam);
+}
+    </script>
+</body>
+</html>
